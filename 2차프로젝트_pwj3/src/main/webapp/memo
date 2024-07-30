@@ -1,0 +1,208 @@
+
+
+내 주문정보 보기 구현하기(mypage)-주문 목록 보기 기능 구현하고, 주문 취소 기능 구현하기(o)
+관리자 페이지에서 주문 현황 보기 만들기 (o)
+----------------------------------------------------------
+
+마이페이지-> 상품보기 누르면 해당 게시물로 이동하기, 수정삭제 옆에 거래완료 버튼 만들기 
+
+
+1.판매자 좌표 표시하는 과정에서 id와 pw를 통하여 select 한 후, 멤버DTO의 getter 메서드를이용하려고 했는데 input type을 password로 설정하게 되면, 세션으로 이용할 수 없다.
+
+2.subaddr()과 다른 값은 다 잘 넘어오는데, addr은 넘어오지 않는거지? => MemberDao에서 select한 결과가 매우 많아서, rs(실행)전용 메서드를 만들었는데, 
+		   우편번호를 이용해서 좌표를 알아내는 작업을 위해 db수정과정에서 dao는 수정하지 않아서 null값을 출력하게 되었음
+		   
+3.수업시간에는 insert 작업이나 update 작업처럼 무언가 실행 결과를 cnt로 리턴하는 경우가 많았다. 이 프로젝트에서도 cnt의 초기값을 -1로 두었는데, 이럴 경우 
+		   주문 수량이 1개만 주문하게 되면, 0이 리턴이 되어 주문목록에서 확인할 수 없게 되었다. 따라서 cnt=0으로 초기화 하였다.
+		   
+4.게시판에서 새로 고침을 하면, num이 계속 올라간다..? 그리고 db에는 댓글이 삽입된걸 확인할 수 있는데, 페이지에 댓글이 안나옴
+
+5.특정 부분에서 한글 깨짐 현상 : request.set~(utp-8)은 제일 상단에 위치시켜야 한다.. 나는 pnum값을 먼저 받아오고, 인코딩 설정을 했는데 한글이 아니고 숫자라서 먼저 받아오고 인코딩 설정을 해도 된다고 착각함..이틀 걸려서 해결! 
+---------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+
+-- 회원 테이블 생성
+drop sequence memseq ;
+create sequence memseq   
+increment by 1
+start with 1
+minvalue 0
+maxvalue 10000
+nocache;
+ 
+drop table members cascade constraints purge ;
+create table members(
+	no number primary key,
+	name varchar2(30) not null,
+	id varchar2(12) not null,
+	password varchar2(12),
+	rrn1 varchar2(10),
+	rrn2 varchar2(10),
+	email varchar2(20),
+	hp1 varchar2(10),
+	hp2 varchar2(10),
+	hp3 varchar2(20),
+	joindate varchar2(20),
+	card varchar2(25),
+	addr varchar2(50),
+	subaddr varchar2(50)				
+);
+
+--마이페이지에서는 이름은 수정할 수 없도록 설정
+
+insert into members(no, name, id, password, rrn1, rrn2) 
+values(memseq.nextval, '어드민', 'admin', '1234', '111111', '2222222') ;
+
+insert into members(no, name, id, password, rrn1, rrn2, hp1, hp2, hp3, addr, subaddr)
+values(memseq.nextval, '테스트', 'test', '1234', '123456', '1234567', '010', '1111', '1111','서울 마포구 서교동 396-30','서교동') ;
+
+col name for  a12
+col id for a12
+col password for a12
+col rrn1 for a10
+col rrn2 for a10
+select no, name, id, password, rrn1, rrn2 from members ;
+
+
+-- 카테고리 테이블
+drop sequence catseq ;
+drop table category cascade constraints purge ;
+
+create sequence catseq
+increment by 1
+start with 1
+minvalue 1
+maxvalue 10000
+nocache;
+
+
+create table category(
+	cnum 	number primary key,
+	code 	varchar2(20) not null,
+	cname 	varchar2(50) not null
+);
+insert into category values(catseq.nextval,'test','test');
+
+-- 상품 테이블
+drop sequence catprod ;
+
+create sequence catprod 
+increment by 1
+start with 1
+minvalue 0
+maxvalue 10000
+nocache;
+
+drop table product cascade constraints purge ;
+create table product(
+	pnum 		int not null primary key,
+	pname 		varchar2(50) not null,
+	pcategory_fk  	varchar2(20) not null,
+	pcompany 	varchar2(50),
+	pimage   		varchar2(30), 
+	pqty   int default 0,
+	price   		int default 0,
+	pspec   		varchar2(12),
+	pcontents 	varchar2(500),
+	psweet 		varchar2(30), 
+	palch	 	 varchar2(20),  
+	point   		int default 0,
+	paddr	 	varchar2(40), 
+	pfood	 	varchar2(250), 
+	pinputdate 	varchar2(10)
+);
+
+--상품 등록은 카테고리 먼저 등록해야 가능하기 때문에, 웹에서 추가하는게 편합니다.
+
+col pname for a12
+col pcompany for a12
+col pimage for a12
+col pcontents for a12
+select * from product  ;
+
+
+
+-- 매출 주문 테이블
+drop sequence orderseq ;
+
+create sequence orderseq 
+increment by 1
+start with 1
+minvalue 0
+maxvalue 10000
+nocache;
+ 
+ 
+drop table orders cascade constraints purge ;
+  
+create table orders(
+	orderId number, -- 주문번호(orderseq)
+	mid varchar2(20),
+	memno number, -- members테이블의 회원번호
+	mname varchar2(50),
+	orderImg varchar2(40),
+	memcard varchar(20), --members테이블의회원카드번호
+	pname varchar2(50),
+	pnum number, --상품번호
+	oqty number, -- product 테이블의 수량
+	amount number -- 전체가격
+);
+
+
+--중고상품 테이블
+
+drop table usedproduct cascade constraints purge;
+create table usedproduct(
+	upnum int not null primary key,
+	upname varchar2(50) not null,
+	upcategory varchar2(40) not null,
+	uprice int default 0,
+	upimage varchar2(50),
+	upcontents varchar2(500),
+	uaddr varchar2(100),
+	username varchar2(30),
+	title varchar2(50)
+);
+
+drop sequence upseq ;
+
+create sequence upseq 
+increment by 1
+start with 1
+minvalue 0
+maxvalue 10000
+nocache;
+
+
+--댓글 기능을 구현하는 board 테이블
+drop table board;
+
+create table board( 
+	num number not null primary key,
+	writer varchar2(100) not null,
+	subject varchar2(100) not null,
+	passwd varchar2(20) not null,
+	reg_date date not null,
+	readcount int default 0,
+	ref number not null,
+	re_step number not null,
+	re_level number not null,
+	content varchar2(500) not null,
+	ip varchar2(30) not null,
+	upnum number not null
+);
+
+drop sequence board_seq;
+create sequence board_seq
+  increment by 1
+  start with 1
+  minvalue 1
+  maxvalue 10000
+  nocache;
+  	
+ 
+commit;
+
+-----------------------------------------------------------------------------------
+
